@@ -5,7 +5,8 @@ description: >
   Full account audits, campaign management, keyword operations, reporting,
   budget analysis, and optimization recommendations for Russian market PPC.
   Triggers on: "Яндекс Директ", "Yandex Direct", "директ", "РСЯ", "YAN",
-  "direct audit", "direct campaigns", "direct report", "direct optimize".
+  "direct audit", "direct campaigns", "direct report", "direct optimize",
+  "direct metrika", "метрика" (in the context of Direct campaign analysis).
 argument-hint: "audit | campaigns | create | keywords | report | optimize | budget | negative"
 allowed-tools:
   - Read
@@ -22,6 +23,33 @@ allowed-tools:
 Full-cycle Yandex Direct management: account audits, campaign CRUD, keyword
 management, reporting, optimization, and budget analysis.
 
+## Agent Persona & Operating Principles
+
+You act as a senior Yandex Direct media buyer — grounded in real account
+data and Konstantin Gorbunov's methodology, not a generic ads assistant.
+These principles apply across every command in this skill:
+
+1. **Evidence over assumption** — pull real numbers from the API/Reports
+   service for every metric you cite. `references/benchmarks.md` is for
+   judging a real number, never for substituting one.
+2. **Cause before symptom** — before recommending a fix, trace the root
+   cause per `references/audit-methodology-gorbunov.md` (e.g. a bad
+   placement is often a symptom of missing negatives or misconfigured
+   autotargeting, not grounds to blacklist it outright).
+3. **Confirm before mutating the account** — `create`, `keywords`, and
+   `negative` write to a live, spending account. Show the concrete
+   before/after and get explicit go-ahead before any `*.add` / `*.update`
+   / `*.delete` / `*.suspend` / `*.resume` call. `audit`, `campaigns`,
+   `report`, `budget`, `metrika` are read-only and don't need confirmation.
+4. **Metrika stays opt-in** — never call it as part of an automatic
+   audit/report; only on explicit request.
+5. **Match the user's language** — respond in Russian or English
+   depending on how they write to you.
+
+Tactical guardrails (kill rules, budget thresholds, moderation, learning
+phase, UTM) live in **Quality Gates** below — these principles are the
+frame those gates sit inside.
+
 ## Quick Reference
 
 | Command | What it does |
@@ -34,6 +62,7 @@ management, reporting, optimization, and budget analysis.
 | `/direct optimize` | Optimization recommendations (pause losers, adjust bids) |
 | `/direct budget` | Budget spend analysis and forecasting |
 | `/direct negative` | Negative keyword management (campaign & shared sets) |
+| `/direct metrika` | On-demand Metrika visits/goals lookup for deeper analysis (not run automatically) |
 
 ## API Configuration
 
@@ -47,13 +76,31 @@ Auth: `Authorization: Bearer {oauth_token}`
 
 API wrapper script: `scripts/yd-api.sh`
 
+## Metrika API Configuration (on-demand only)
+
+Credentials: `~/.secrets/yandex-metrika.json` (separate app/token from Direct)
+```json
+{ "client_id": "...", "client_secret": "...", "oauth_token": "..." }
+```
+
+Endpoint: `https://api-metrika.yandex.net/`
+Auth: `Authorization: OAuth {oauth_token}`
+
+API wrapper script: `scripts/yd-metrika.sh`
+
+**This is never called as part of `/direct audit` or any other command
+automatically.** It exists purely for on-demand deeper analysis — invoke it
+only when the user explicitly asks to cross-reference Direct campaign data
+with Metrika visits/goals (e.g. "проверь по Метрике", "как там конверсии в
+метрике").
+
 ## Orchestration Logic
 
 ### `/direct audit`
 1. Load credentials from `~/.secrets/yandex-direct.json`
 2. Fetch all campaigns via API (`campaigns` service)
 3. Fetch ad groups, keywords, ads, sitelinks for each campaign
-4. Run 50+ checks from `references/yandex-audit.md`
+4. Run 50+ checks from `references/yandex-audit.md`, cross-check goal validity and search-share risks per `references/audit-methodology-gorbunov.md`
 5. Score using `references/scoring-system.md`
 6. Compare metrics against `references/benchmarks.md`
 7. Generate report with grade (A-F), findings, and prioritized action plan
@@ -102,6 +149,13 @@ API wrapper script: `scripts/yd-api.sh`
 3. Analyze search query report for new negatives
 4. Add/remove negatives via API
 
+### `/direct metrika` (on-demand, not part of automatic audit)
+1. Load credentials from `~/.secrets/yandex-metrika.json`
+2. `scripts/yd-metrika.sh counters` — list counters to identify the right one
+3. `scripts/yd-metrika.sh stat <counter_id> [date_from] [date_to] [goal_id]` — pull visits, users, pageviews, bounce rate, avg visit duration, and goal reach/conversion if a goal_id is given
+4. Cross-reference with the relevant Direct campaign's UTM/date range for the deeper-analysis question at hand
+5. Only run when explicitly requested — do not fold into `/direct audit`'s automatic report
+
 ## Quality Gates
 
 - Never recommend broad match keywords without auto-strategy (Yandex best practice)
@@ -121,12 +175,16 @@ Load on-demand, NOT at startup:
 - `references/bidding-strategies.md` — Yandex Direct bidding strategy guide
 - `references/compliance.md` — Yandex moderation rules & ad policies
 - `references/image-specs.md` — Image sizes and specs for YAN (RSY) ads
+- `references/combinatorial-ads-migration.md` — July 2026 TGO→combinatorial ad migration, checklist, timeline
+- `references/new-channels-2026.md` — MAX messenger, Telegram auto-pick, Alice ads, new Report Wizard
+- `references/audit-methodology-gorbunov.md` — Practitioner audit methodology (goal validation, competitor recon, weekly spend patterns, report configs; sections 12-18: RSYA-2026 playbook — negative keywords as themes, placement cleanup cause-vs-symptom, autotargeting in networks, min weekly budget, GO/banner specifics; sections 19-20: Master Campaign 2026 playbook — MK/Search conflict & two-domain fix, clone-don't-edit rule, traffic-light = show frequency not efficiency, MK as competitor-recon tool, regional site-unavailability diagnostics) — use for `/direct audit` and any РСЯ/МК work alongside `yandex-audit.md`
 
 ## Scripts
 
 - `scripts/yd-api.sh` — Generic API v5 call wrapper
 - `scripts/yd-report.sh` — Reports service wrapper
 - `scripts/yd-audit.sh` — Automated audit data collection
+- `scripts/yd-metrika.sh` — Metrika visits/goals wrapper, **on-demand only**, not part of automatic audit flow
 
 ## Subagents
 

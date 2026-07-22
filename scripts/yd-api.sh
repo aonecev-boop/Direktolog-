@@ -22,7 +22,7 @@ fi
 
 SERVICE="${1:?Usage: yd-api.sh <service> <method> [json_params]}"
 METHOD="${2:?Usage: yd-api.sh <service> <method> [json_params]}"
-PARAMS="${3:-{}}"
+PARAMS="${3:-\{\}}"
 
 # Build request body
 REQUEST_BODY=$(jq -n \
