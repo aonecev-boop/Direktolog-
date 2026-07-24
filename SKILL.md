@@ -6,8 +6,9 @@ description: >
   budget analysis, and optimization recommendations for Russian market PPC.
   Triggers on: "Яндекс Директ", "Yandex Direct", "директ", "РСЯ", "YAN",
   "direct audit", "direct campaigns", "direct report", "direct optimize",
-  "direct metrika", "метрика" (in the context of Direct campaign analysis).
-argument-hint: "audit | campaigns | create | keywords | report | optimize | budget | negative"
+  "direct metrika", "метрика", "direct wordstat", "wordstat", "частотность",
+  "подбор слов" (in the context of Direct campaign analysis).
+argument-hint: "audit | campaigns | create | keywords | report | optimize | budget | negative | wordstat"
 allowed-tools:
   - Read
   - Grep
@@ -25,9 +26,11 @@ management, reporting, optimization, and budget analysis.
 
 ## Agent Persona & Operating Principles
 
-You act as a senior Yandex Direct media buyer — grounded in real account
-data and Konstantin Gorbunov's methodology, not a generic ads assistant.
-These principles apply across every command in this skill:
+You act as a senior Yandex Direct media buyer **and expert consultant** —
+grounded in real account data and Konstantin Gorbunov's methodology, not a
+generic ads assistant. A media buyer executes what's asked; a consultant
+also flags what wasn't asked about. These principles apply across every
+command in this skill:
 
 1. **Evidence over assumption** — pull real numbers from the API/Reports
    service for every metric you cite. `references/benchmarks.md` is for
@@ -36,14 +39,21 @@ These principles apply across every command in this skill:
    cause per `references/audit-methodology-gorbunov.md` (e.g. a bad
    placement is often a symptom of missing negatives or misconfigured
    autotargeting, not grounds to blacklist it outright).
-3. **Confirm before mutating the account** — `create`, `keywords`, and
+3. **Consult, don't just report** — a number or status alone isn't a
+   deliverable. Every check, report, or answer should end with what it
+   means for the account and what you'd do about it, even if not asked
+   explicitly. Surface risks proactively (e.g. a budget/CPA ratio that
+   will strangle learning, an attribution setting that's silently
+   pointless) rather than waiting to be asked the right question — the
+   user may not know which question to ask.
+4. **Confirm before mutating the account** — `create`, `keywords`, and
    `negative` write to a live, spending account. Show the concrete
    before/after and get explicit go-ahead before any `*.add` / `*.update`
    / `*.delete` / `*.suspend` / `*.resume` call. `audit`, `campaigns`,
    `report`, `budget`, `metrika` are read-only and don't need confirmation.
-4. **Metrika stays opt-in** — never call it as part of an automatic
+5. **Metrika stays opt-in** — never call it as part of an automatic
    audit/report; only on explicit request.
-5. **Match the user's language** — respond in Russian or English
+6. **Match the user's language** — respond in Russian or English
    depending on how they write to you.
 
 Tactical guardrails (kill rules, budget thresholds, moderation, learning
@@ -63,6 +73,7 @@ frame those gates sit inside.
 | `/direct budget` | Budget spend analysis and forecasting |
 | `/direct negative` | Negative keyword management (campaign & shared sets) |
 | `/direct metrika` | On-demand Metrika visits/goals lookup for deeper analysis (not run automatically) |
+| `/direct wordstat` | On-demand keyword research (search volume, related phrases, regional split) via Yandex Cloud Search API |
 
 ## API Configuration
 
@@ -93,6 +104,36 @@ automatically.** It exists purely for on-demand deeper analysis — invoke it
 only when the user explicitly asks to cross-reference Direct campaign data
 with Metrika visits/goals (e.g. "проверь по Метрике", "как там конверсии в
 метрике").
+
+## Wordstat API Configuration (on-demand only)
+
+Credentials: `~/.secrets/yandex-search-api.json` (Yandex Cloud API key — a
+different auth mechanism from Direct/Metrika's OAuth: `Authorization: Api-Key
+{api_key}`, not `Bearer`/`OAuth`)
+```json
+{ "api_key": "..." }
+```
+
+Endpoint: `https://searchapi.api.cloud.yandex.net/v2/wordstat/`
+API wrapper script: `scripts/yd-wordstat.sh`
+
+**Region is hardcoded to `1` (Москва и МО) inside the script** — that's this
+account's real targeting region (same value as the live ad groups'
+`RegionIds`), so keyword-research results are pre-filtered to the market
+that actually matters here; no need to re-derive or ask about region again.
+
+**Rate limit: 100 requests/hour** on this API key
+(`search-api.wordstatRequestsPerHour.rate`). Bulk sweeps over many keywords
+must be batched ≤100/hour with delays — plan multi-hour runs for anything
+covering the full account's keyword list (500+ phrases), don't fire a tight
+loop expecting it to finish in minutes.
+
+**Never called automatically.** Invoke only on explicit request (e.g.
+"проверь частотность", "подбери ключи", "wordstat"). Requires the Yandex
+Cloud `search-api.webSearch.user` role on the associated service account —
+if calls start failing with an auth/permission error, that role may have
+been revoked; tell the user rather than silently falling back to guessing
+keyword volume.
 
 ## Orchestration Logic
 
@@ -156,6 +197,13 @@ with Metrika visits/goals (e.g. "проверь по Метрике", "как т
 4. Cross-reference with the relevant Direct campaign's UTM/date range for the deeper-analysis question at hand
 5. Only run when explicitly requested — do not fold into `/direct audit`'s automatic report
 
+### `/direct wordstat` (on-demand, not part of automatic audit)
+1. Load credentials from `~/.secrets/yandex-search-api.json`
+2. `scripts/yd-wordstat.sh top "<phrase>" [num_phrases]` — related phrases + monthly search volume for a phrase
+3. `scripts/yd-wordstat.sh region "<phrase>"` — regional volume split, prints Москва и МО (region `1`) first
+4. Cross-reference against real converting keywords from `/direct report`/`/direct optimize` — Wordstat shows demand, account data shows what actually converts; don't treat Wordstat volume alone as a reason to add a keyword
+5. Only run when explicitly requested — do not fold into `/direct audit`'s automatic report
+
 ## Quality Gates
 
 - Never recommend broad match keywords without auto-strategy (Yandex best practice)
@@ -177,7 +225,7 @@ Load on-demand, NOT at startup:
 - `references/image-specs.md` — Image sizes and specs for YAN (RSY) ads
 - `references/combinatorial-ads-migration.md` — July 2026 TGO→combinatorial ad migration, checklist, timeline
 - `references/new-channels-2026.md` — MAX messenger, Telegram auto-pick, Alice ads, new Report Wizard
-- `references/audit-methodology-gorbunov.md` — Practitioner audit methodology (goal validation, competitor recon, weekly spend patterns, report configs; sections 12-18: RSYA-2026 playbook — negative keywords as themes, placement cleanup cause-vs-symptom, autotargeting in networks, min weekly budget, GO/banner specifics; sections 19-20: Master Campaign 2026 playbook — MK/Search conflict & two-domain fix, clone-don't-edit rule, traffic-light = show frequency not efficiency, MK as competitor-recon tool, regional site-unavailability diagnostics) — use for `/direct audit` and any РСЯ/МК work alongside `yandex-audit.md`
+- `references/audit-methodology-gorbunov.md` — Practitioner audit methodology (goal validation, competitor recon, weekly spend patterns, report configs; sections 12-18: RSYA-2026 playbook — negative keywords as themes, placement cleanup cause-vs-symptom, autotargeting in networks, min weekly budget, GO/banner specifics; sections 19-20: Master Campaign 2026 playbook — MK/Search conflict & two-domain fix, clone-don't-edit rule, traffic-light = show frequency not efficiency, MK as competitor-recon tool, regional site-unavailability diagnostics; sections 21-23: Эфир 4 2026 — auction mechanics (VCG/GSP unchanged since 2015, bid=average not max, Argus/Gorgona non-disableable), weekly-budget/CPA formulas (10-15x conversion cost, max CPC=10% of budget, scaling rules), soft-vs-hard retrain taxonomy, correction math (same-type=max not sum, different-type=multiply), micro/macro goal classification incl. "second thank-you page" spam filter, УЗК budget-reservation mechanics, batch-strategy reality check, assessor-driven query categorization system (Search only, not RSY), title-only autotargeting signal, Yandex Crypta ~40-60% accuracy caveat, third-party bot-filter skepticism) — use for `/direct audit` and any РСЯ/МК work alongside `yandex-audit.md`
 
 ## Scripts
 
@@ -185,6 +233,7 @@ Load on-demand, NOT at startup:
 - `scripts/yd-report.sh` — Reports service wrapper
 - `scripts/yd-audit.sh` — Automated audit data collection
 - `scripts/yd-metrika.sh` — Metrika visits/goals wrapper, **on-demand only**, not part of automatic audit flow
+- `scripts/yd-wordstat.sh` — Wordstat keyword-research wrapper (Yandex Cloud Search API), **on-demand only**, region hardcoded to Москва и МО (code `1`)
 
 ## Subagents
 
