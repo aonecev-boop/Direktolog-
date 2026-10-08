@@ -203,6 +203,7 @@ keyword volume.
 3. `scripts/yd-wordstat.sh region "<phrase>"` — regional volume split, prints Москва и МО (region `1`) first
 4. Cross-reference against real converting keywords from `/direct report`/`/direct optimize` — Wordstat shows demand, account data shows what actually converts; don't treat Wordstat volume alone as a reason to add a keyword
 5. Only run when explicitly requested — do not fold into `/direct audit`'s automatic report
+6. For a full semantic-core build (masks → Wordstat → negatives → dedupe → groups) or when asked to "собери семантику/маски/минус-фразы/сгруппируй", follow `references/semantic-core-pipeline.md` (grouping rules, minus-operator table, candidate method, pre-launch checklist); one write step at a time, user approves negatives and architecture
 
 ## Quality Gates
 
@@ -226,6 +227,7 @@ Load on-demand, NOT at startup:
 - `references/combinatorial-ads-migration.md` — July 2026 TGO→combinatorial ad migration, checklist, timeline
 - `references/new-channels-2026.md` — MAX messenger, Telegram auto-pick, Alice ads, new Report Wizard
 - `references/audit-methodology-gorbunov.md` — Practitioner audit methodology (goal validation, competitor recon, weekly spend patterns, report configs; sections 12-18: RSYA-2026 playbook — negative keywords as themes, placement cleanup cause-vs-symptom, autotargeting in networks, min weekly budget, GO/banner specifics; sections 19-20: Master Campaign 2026 playbook — MK/Search conflict & two-domain fix, clone-don't-edit rule, traffic-light = show frequency not efficiency, MK as competitor-recon tool, regional site-unavailability diagnostics; sections 21-23: Эфир 4 2026 — auction mechanics (VCG/GSP unchanged since 2015, bid=average not max, Argus/Gorgona non-disableable), weekly-budget/CPA formulas (10-15x conversion cost, max CPC=10% of budget, scaling rules), soft-vs-hard retrain taxonomy, correction math (same-type=max not sum, different-type=multiply), micro/macro goal classification incl. "second thank-you page" spam filter, УЗК budget-reservation mechanics, batch-strategy reality check, assessor-driven query categorization system (Search only, not RSY), title-only autotargeting signal, Yandex Crypta ~40-60% accuracy caveat, third-party bot-filter skepticism) — use for `/direct audit` and any РСЯ/МК work alongside `yandex-audit.md`
+- `references/semantic-core-pipeline.md` — Semantic-core build rules (Gorbunov/Skorokhodov webinar, Oct 2026): API access steps and backend fallback, mask sources, Wordstat second pass (top-10), negative-keyword operator table + candidate method + common negatives, dedupe, grouping rules (one mask = one group, 3-repeat rule, stop-words), pre-launch checklist, AI write-safety rules — use for `/direct keywords`, `/direct negative`, `/direct create`
 
 ## Scripts
 
