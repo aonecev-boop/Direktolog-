@@ -1,7 +1,9 @@
 # Semantic Core Pipeline (masks → Wordstat → negatives → groups)
 
 Source: Monster Context webinar «Сбор семантического ядра через ИИ»
-(К. Горбунов, Р. Скороходов, 2026-10-06, rutube/YouTube 3:11:01). Slides
+(К. Горбунов, Р. Скороходов, 2026-10-06, rutube/YouTube 3:11:01). Mirror:
+youtube.com/watch?v=f77eWAP5N54 («Семантическое ядро через ИИ: от масок до
+групп | API Wordstat и Директа»). Slides
 checked against the video frames; the numbers below marked *(speaker)* were
 stated aloud and not verified. Use this file for `/direct keywords`,
 `/direct negative`, `/direct create` and any "собери семантику" request.
