@@ -1,0 +1,116 @@
+openapi: 3.1.0
+info:
+  title: Yandex Cloud Wordstat Search API (on-demand)
+  description: >
+    On-demand only — never call this automatically as part of an audit.
+    Invoke only on explicit request (e.g. "проверь частотность", "подбери
+    ключи", "wordstat"). Separate auth mechanism from Direct/Metrika: a
+    Yandex Cloud API key (not OAuth), requires the `search-api.webSearch.user`
+    role on the associated service account — if calls start failing with an
+    auth/permission error, that role may have been revoked; say so rather
+    than silently guessing keyword volume.
+
+    RATE LIMIT: 100 requests/hour on this API key
+    (search-api.wordstatRequestsPerHour.rate). Batch bulk sweeps (500+
+    phrases) across hours with delays — never fire a tight loop expecting it
+    to finish in minutes.
+  version: "2"
+servers:
+  - url: https://searchapi.api.cloud.yandex.net/v2/wordstat
+security:
+  - wordstatKey: []
+components:
+  securitySchemes:
+    wordstatKey:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: >
+        Yandex uses the scheme word "Api-Key" here, not "Bearer". When
+        configuring this Action's auth in the GPT Builder, choose "API Key"
+        with header name "Authorization", and paste the FULL string
+        "Api-Key <key>" as the key value itself — ChatGPT inserts whatever
+        you give it verbatim, with no added prefix.
+paths:
+  /topRequests:
+    post:
+      operationId: topRequests
+      summary: Top related search phrases and monthly search volume for a phrase (mask)
+      description: >
+        Use this to build out a mask's real search demand before grouping —
+        see references/semantic-core-pipeline.md §4 (second-pass top-10
+        expansion logic) and §7 (grouping rules) for how to turn the
+        returned phrase list into campaign-ready groups. Don't treat volume
+        alone as a reason to add a keyword — cross-reference against what
+        actually converts in a `getReport` search-query report from the
+        Direct API action.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phrase]
+              properties:
+                phrase:
+                  type: string
+                  description: The mask/phrase to research, e.g. "шкаф-купе на заказ".
+                numPhrases:
+                  type: integer
+                  default: 20
+                  description: How many related phrases to return.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /regions:
+    post:
+      operationId: regionBreakdown
+      summary: Regional search-volume split for a phrase
+      description: >
+        This account's real targeting region is Москва и МО (region code
+        "1") — always surface that figure first, then the overall top-10
+        regions for context, per this skill's convention in
+        scripts/yd-wordstat.sh.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phrase]
+              properties:
+                phrase:
+                  type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        region:
+                          type: string
+                        count:
+                          type: string
+        "400":
+          description: Error (e.g. rate limit exceeded — error code 8)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  message:
+                    type: string

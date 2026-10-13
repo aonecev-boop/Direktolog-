@@ -1,0 +1,117 @@
+openapi: 3.1.0
+info:
+  title: Yandex Metrika API (on-demand)
+  description: >
+    On-demand only — never call this automatically as part of an audit or
+    report. Use it only when the user explicitly asks to cross-reference
+    Direct campaign data with Metrika visits/goals (e.g. "проверь по
+    Метрике", "как там конверсии в метрике"). Separate OAuth app/token from
+    Direct.
+  version: "1"
+servers:
+  - url: https://api-metrika.yandex.net
+security:
+  - metrikaKey: []
+components:
+  securitySchemes:
+    metrikaKey:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: >
+        Yandex uses the non-standard scheme word "OAuth" here, not "Bearer".
+        When configuring this Action's auth in the GPT Builder, choose
+        "API Key" with header name "Authorization", and paste the FULL
+        string "OAuth <token>" (the word OAuth, a space, then the token) as
+        the key value itself — ChatGPT inserts whatever you give it verbatim,
+        with no added prefix.
+paths:
+  /management/v1/counters:
+    get:
+      operationId: listCounters
+      summary: List Metrika counters available to this token (id, name, site, status)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rows:
+                    type: integer
+                  counters:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        name:
+                          type: string
+                        site:
+                          type: string
+                        status:
+                          type: string
+  /stat/v1/data:
+    get:
+      operationId: getStat
+      summary: Visits, users, pageviews, bounce rate, avg. duration and optional goal metrics for a counter over a date range
+      description: >
+        Build `metrics` as a comma-joined string. Base set used by this
+        skill: `ym:s:visits,ym:s:users,ym:s:pageviews,ym:s:bounceRate,
+        ym:s:avgVisitDurationSeconds`. To add a specific goal's reach and
+        conversion rate, append
+        `,ym:s:goal<GOAL_ID>reaches,ym:s:goal<GOAL_ID>conversionRate` with
+        the real numeric goal id substituted (this is a Metrika API naming
+        convention, not a typo). Cross-reference the result against the
+        matching Direct campaign's date range and UTM — see
+        references/audit-methodology-gorbunov.md §1 for the full goal/
+        attribution validation checklist (event vs page-visit goals,
+        composite-goal pitfalls, attribution model caveats) before trusting
+        a conversion count at face value.
+      parameters:
+        - name: ids
+          in: query
+          required: true
+          description: Counter id (from listCounters).
+          schema:
+            type: string
+        - name: metrics
+          in: query
+          required: true
+          schema:
+            type: string
+            default: ym:s:visits,ym:s:users,ym:s:pageviews,ym:s:bounceRate,ym:s:avgVisitDurationSeconds
+        - name: date1
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: date2
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "400":
+          description: Error (malformed metrics string, invalid counter id, etc.)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true

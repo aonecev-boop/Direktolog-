@@ -1,0 +1,399 @@
+openapi: 3.1.0
+info:
+  title: Yandex Direct API v5
+  description: >
+    Yandex Direct API v5 — campaign, ad group, ad, keyword, sitelink and
+    negative-keyword management, plus the Reports service. Each service has
+    ONE endpoint; which operation runs is chosen by the `method` field inside
+    the request body (this mirrors Yandex's own JSON-RPC-style design, it is
+    not a typo). `params` is intentionally untyped (free-form object) because
+    the real schema has dozens of method-specific shapes — build `params`
+    from the method-specific examples in each operation's description and in
+    the uploaded knowledge files (SKILL.md, references/yandex-audit.md,
+    references/semantic-core-pipeline.md).
+
+    SAFETY: `get` calls are read-only and safe to run freely. Any method
+    containing `add`, `update`, `delete`, `suspend`, `resume`, `moderate`,
+    `archive`, or `setBids` writes to a live, spending ad account. Per this
+    GPT's instructions, never call one of those without first showing the
+    user a concrete before/after in chat and getting an explicit go-ahead —
+    this schema has no technical enforcement of that rule, it is
+    instructions-only.
+  version: "5"
+servers:
+  - url: https://api.direct.yandex.com
+security:
+  - directBearer: []
+components:
+  securitySchemes:
+    directBearer:
+      type: http
+      scheme: bearer
+      description: >
+        OAuth token of the Direct API application, sent as
+        `Authorization: Bearer <token>`. ChatGPT applies the "Bearer " prefix
+        automatically when you paste just the raw token into the Action's
+        API key field.
+  parameters:
+    ClientLogin:
+      name: Client-Login
+      in: header
+      required: false
+      description: >
+        Login of the Direct account to act on. Required when the OAuth token
+        belongs to an agency/representative account managing several client
+        logins; omit it for a token tied directly to one account. Never
+        inferred automatically — the active account must always be named
+        explicitly by the user for this chat session (one chat = one
+        account).
+      schema:
+        type: string
+    AcceptLanguage:
+      name: Accept-Language
+      in: header
+      required: false
+      description: Response language for human-readable error/status text.
+      schema:
+        type: string
+        default: ru
+  schemas:
+    MethodParamsBody:
+      type: object
+      required: [method, params]
+      properties:
+        method:
+          type: string
+          description: >
+            API method name for this service, e.g. "get", "add", "update",
+            "delete", "suspend", "resume".
+        params:
+          type: object
+          additionalProperties: true
+          description: >
+            Method-specific parameters. For `get`, typically
+            `{"SelectionCriteria": {...}, "FieldNames": [...]}` plus one
+            `<Type>FieldNames` array per ad/campaign subtype requested.
+    ApiResult:
+      type: object
+      properties:
+        result:
+          type: object
+          additionalProperties: true
+        error:
+          type: object
+          additionalProperties: true
+          description: Present instead of `result` when the call fails.
+paths:
+  /json/v5/campaigns:
+    post:
+      operationId: callCampaigns
+      summary: Get, create or update campaigns
+      description: >
+        `method: "get"` — list campaigns. Typical params:
+        `{"SelectionCriteria":{"Ids":[...]} or {"States":["ON"]},
+        "FieldNames":["Id","Name","Status","State","Statistics",
+        "DailyBudget","Strategy"]}`. Use `"States":["ON"]` to match this
+        skill's rule of only auditing live campaigns.
+
+        `method: "add"` — create a campaign (mutating; confirm first).
+        `method: "update"` — change settings such as DailyBudget or Strategy
+        on an existing campaign (mutating; confirm first, and prefer
+        cloning a campaign over editing a live one per Gorbunov's
+        methodology in references/audit-methodology-gorbunov.md).
+      parameters:
+        - $ref: '#/components/parameters/ClientLogin'
+        - $ref: '#/components/parameters/AcceptLanguage'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MethodParamsBody'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResult'
+  /json/v5/adgroups:
+    post:
+      operationId: callAdGroups
+      summary: Get, create or update ad groups
+      description: >
+        `method: "get"` params example:
+        `{"SelectionCriteria":{"CampaignIds":[...]},
+        "FieldNames":["Id","Name","CampaignId","Status","Type","RegionIds"]}`.
+        `method: "add"`/`"update"` mutate ad groups (confirm first).
+      parameters:
+        - $ref: '#/components/parameters/ClientLogin'
+        - $ref: '#/components/parameters/AcceptLanguage'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MethodParamsBody'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResult'
+  /json/v5/ads:
+    post:
+      operationId: callAds
+      summary: Get, create or update ads (incl. landing-page Href per ad)
+      description: >
+        `method: "get"` params example:
+        `{"SelectionCriteria":{"CampaignIds":[...]},
+        "FieldNames":["Id","CampaignId","AdGroupId","Status","State"],
+        "TextAdFieldNames":["Title","Title2","Text","Href","Mobile"],
+        "TextImageAdFieldNames":["Name","Href"]}`. `Href` is the landing-page
+        URL — use this to check ad-copy-to-landing-page relevance (see
+        references/audit-methodology-gorbunov.md §7.2 on
+        headline⇄keyword⇄landing relevance). `method: "add"`/`"update"`
+        mutate ads (confirm first; always re-check moderation status after).
+      parameters:
+        - $ref: '#/components/parameters/ClientLogin'
+        - $ref: '#/components/parameters/AcceptLanguage'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MethodParamsBody'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResult'
+  /json/v5/keywords:
+    post:
+      operationId: callKeywords
+      summary: Get, add, update (incl. bids), suspend, resume or delete keywords
+      description: >
+        `method: "get"` params example:
+        `{"SelectionCriteria":{"CampaignIds":[...]},
+        "FieldNames":["Id","Keyword","AdGroupId","CampaignId","Status",
+        "State","Bid","ContextBid","StatisticsSearch","StatisticsNetwork"]}`.
+
+        Mutating methods — "add", "update" (bid changes included), "suspend",
+        "resume", "delete" — all write to a live account. Per this GPT's
+        instructions: show the user the concrete before/after for the
+        specific keyword(s)/bid(s) and get an explicit go-ahead before
+        calling any of these.
+      parameters:
+        - $ref: '#/components/parameters/ClientLogin'
+        - $ref: '#/components/parameters/AcceptLanguage'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MethodParamsBody'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResult'
+  /json/v5/sitelinks:
+    post:
+      operationId: callSitelinkSets
+      summary: Get or create sitelink sets
+      description: >
+        `method: "get"` params example:
+        `{"SelectionCriteria":{}, "FieldNames":["Id","Sitelinks"]}`.
+      parameters:
+        - $ref: '#/components/parameters/ClientLogin'
+        - $ref: '#/components/parameters/AcceptLanguage'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MethodParamsBody'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResult'
+  /json/v5/negativekeywordsharedsets:
+    post:
+      operationId: callNegativeKeywordSharedSets
+      summary: Get or update shared negative-keyword sets
+      description: >
+        `method: "get"` params example:
+        `{"SelectionCriteria":{}, "FieldNames":["Id","Name",
+        "NegativeKeywords"]}`. Use references/semantic-core-pipeline.md §5
+        (operator table, candidate method, common-negatives list) and
+        references/audit-methodology-gorbunov.md §14 (negatives behave
+        differently in RSYA/РСЯ than on Search — they strip page *themes*,
+        not domains, and quotes do not work as an exact-topic match) before
+        proposing any negative-keyword change. `method: "add"`/`"update"`
+        mutate a shared set used by potentially many campaigns — confirm
+        first, and check what else references the set.
+      parameters:
+        - $ref: '#/components/parameters/ClientLogin'
+        - $ref: '#/components/parameters/AcceptLanguage'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MethodParamsBody'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResult'
+  /json/v5/reports:
+    post:
+      operationId: getReport
+      summary: Run a performance report (campaign / ad group / keyword / search query)
+      description: >
+        Dedicated reporting endpoint — body is `{"params": {...}}` only, no
+        `method` field. Required headers beyond auth: `processingMode: auto`
+        and `returnMoneyInMicros: false` (both fixed below). Status 200 means
+        the report body is ready and comes back as
+        tab-separated text (not JSON) in the response body. Status 201/202
+        mean the report is queued/generating — wait ~10-20s and POST the
+        identical request again (Direct caches the report server-side, the
+        retry is cheap). Status 400 means a malformed request — the error
+        body IS JSON in that case.
+
+        Common field sets (pass whichever matches `ReportType`):
+        campaign → `["CampaignName","CampaignId","Impressions","Clicks",
+        "Ctr","AvgCpc","Cost","Conversions","CostPerConversion",
+        "ConversionRate"]` with `ReportType: CAMPAIGN_PERFORMANCE_REPORT`;
+        ad group → `ADGROUP_PERFORMANCE_REPORT`; keyword →
+        `CRITERIA_PERFORMANCE_REPORT`; search query →
+        `SEARCH_QUERY_PERFORMANCE_REPORT` (add `"Query"` to FieldNames for
+        this one). Always set `"DateRangeType":"CUSTOM_DATE"`,
+        `"Format":"TSV"`, `"IncludeVAT":"YES"`, `"IncludeDiscount":"NO"`
+        (CPA/cost in this account's reports is pre-VAT by convention — see
+        references/audit-methodology-gorbunov.md §6 on the NDS discrepancy
+        before comparing report numbers to a client-stated target CPA).
+      parameters:
+        - $ref: '#/components/parameters/ClientLogin'
+        - name: Accept-Language
+          in: header
+          required: false
+          schema:
+            type: string
+            default: ru
+        - name: processingMode
+          in: header
+          required: true
+          schema:
+            type: string
+            enum: [auto]
+            default: auto
+        - name: returnMoneyInMicros
+          in: header
+          required: true
+          schema:
+            type: string
+            enum: ["false"]
+            default: "false"
+        - name: skipReportHeader
+          in: header
+          required: false
+          schema:
+            type: string
+            enum: ["true", "false"]
+            default: "true"
+        - name: skipReportSummary
+          in: header
+          required: false
+          schema:
+            type: string
+            enum: ["true", "false"]
+            default: "true"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [params]
+              properties:
+                params:
+                  type: object
+                  required:
+                    - SelectionCriteria
+                    - FieldNames
+                    - ReportName
+                    - ReportType
+                    - DateRangeType
+                    - Format
+                  properties:
+                    SelectionCriteria:
+                      type: object
+                      properties:
+                        DateFrom:
+                          type: string
+                          format: date
+                        DateTo:
+                          type: string
+                          format: date
+                    FieldNames:
+                      type: array
+                      items:
+                        type: string
+                    ReportName:
+                      type: string
+                      description: Must be unique per request; append a timestamp.
+                    ReportType:
+                      type: string
+                      enum:
+                        - CAMPAIGN_PERFORMANCE_REPORT
+                        - ADGROUP_PERFORMANCE_REPORT
+                        - CRITERIA_PERFORMANCE_REPORT
+                        - SEARCH_QUERY_PERFORMANCE_REPORT
+                    DateRangeType:
+                      type: string
+                      enum: [CUSTOM_DATE]
+                    Format:
+                      type: string
+                      enum: [TSV]
+                    IncludeVAT:
+                      type: string
+                      enum: [YES, NO]
+                    IncludeDiscount:
+                      type: string
+                      enum: [YES, NO]
+      responses:
+        "200":
+          description: Report ready
+          content:
+            text/tab-separated-values:
+              schema:
+                type: string
+        "201":
+          description: Report queued — retry the identical request in 10-20s
+          content:
+            text/plain:
+              schema:
+                type: string
+        "202":
+          description: Report generating — retry the identical request in 10-20s
+          content:
+            text/plain:
+              schema:
+                type: string
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResult'
